@@ -1,0 +1,72 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-zah",
+      "type": "process",
+      "command": "C:/msys64/usr/bin/bash.exe",
+      "args": [
+        "-lc",
+        "export PATH=/c/msys64/mingw64/bin:$PATH; WS='${workspaceFolder}'; cd \"$(cygpath -u \"$WS\")\" && exec make debug"
+      ],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "clean-zah",
+      "type": "process",
+      "command": "C:/msys64/usr/bin/bash.exe",
+      "args": [
+        "-lc",
+        "export PATH=/c/msys64/mingw64/bin:$PATH; WS='${workspaceFolder}'; cd \"$(cygpath -u \"$WS\")\" && exec make clean"
+      ],
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+            "label": "flash-zah",
+            "type": "process",
+            "command": "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
+            "args": [
+                "-c", "port=SWD", "mode=Normal", "reset=SWrst", // Подключение через SWD, режим Under Reset
+                "-d", "C:/ВСЁ/proj_link/CM7/build/stm32h755_cm7.elf", // Путь к твоему файлу (исправь имя .elf)
+                "-v", // Верификация после записи
+                "-rst" // Аппаратный сброс и запуск программы после прошивки
+            ],
+            "problemMatcher": [
+              "$gcc"
+            ],
+            // "group": {
+            //     "kind": "build",
+            //     "isDefault": true
+            // }
+     }
+  ],
+    "VsCodeTaskButtons.tasks": [
+    {
+      "label": "$(alert) build",
+      "task": "build-zah",
+      "color": "error"
+    },
+    {
+      "label": "$(warning) clean",
+      "task": "clean-zah",
+      "color": "warning"
+    },
+    {
+      "label": "$(warning) flash",
+      "task": "flash-zah",
+      "color": "error"
+    }
+  ]
+}
