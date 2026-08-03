@@ -39,7 +39,7 @@
             "command": "C:/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgrammer/bin/STM32_Programmer_CLI.exe",
             "args": [
                 "-c", "port=SWD", "mode=Normal", "reset=SWrst", // Подключение через SWD, режим Under Reset
-                "-d", "C:/ВСЁ/proj_link/CM7/build/stm32h755_cm7.elf", // Путь к твоему файлу (исправь имя .elf)
+                "-d", "C:/all/proj_link/CM7/build/stm32h755_cm7.elf", // Путь к твоему файлу (исправь имя .elf)
                 "-v", // Верификация после записи
                 "-rst" // Аппаратный сброс и запуск программы после прошивки
             ],
