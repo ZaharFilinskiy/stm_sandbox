@@ -61,8 +61,22 @@ INCLUDES := \
 -I Drivers/STM32H7xx_HAL_Driver/Inc/Legacy \
 -I Drivers/CMSIS/Include \
 -I Drivers/CMSIS/Device/ST/STM32H7xx/Include \
--I Core/ssd1306
+-I Drivers/CMSIS/Include \
+-I Core/phy \
+# -I Drivers/CMSIS/Include \
 
+# -I Core/lwip/include/lwip \
+# -I Core/lwip/include/lwip/apps \
+# -I Core/lwip/include/lwip/apps/priv \
+# -I Core/lwip/include/lwip/apps/priv \
+# -I Core/lwip/include/lwip/apps/priv \
+# -I Core/lwip/include/netif \
+# -I Core/lwip/include/netif/ppp \
+# -I Core/lwip/include/netif/ppp/polarssl 
+
+INCLUDES += $(shell find Core/ssd1306 -type d -print | sed 's/^/-I/')
+INCLUDES += $(shell find Core/lwip -type d -print | sed 's/^/-I/')
+INCLUDES += $(shell find Core/embedcli -type d -print | sed 's/^/-I/')
 # ===================== Sources =====================
 # 1. Список базовых файлов
 C_SOURCES := \
@@ -72,9 +86,14 @@ Core/Src/stm32h7xx_it.c \
 Core/Src/syscalls.c \
 Core/Src/sysmem.c \
 Common/Src/system_stm32h7xx_dualcore_boot_cm4_cm7.c \
-Core/ssd1306/ssd1306.c \
-Core/ssd1306/ssd1306_fonts.c \
-Core/ssd1306/ssd1306_tests.c
+Core/phy/lan8742.c 
+# -I Core/ssd1306
+# Core/ssd1306/ssd1306.c \
+# Core/ssd1306/ssd1306_fonts.c \
+# Core/ssd1306/ssd1306_tests.c	
+C_SOURCES += $(shell find Core/ssd1306 -type f -name "*.c")
+C_SOURCES += $(shell find Core/lwip -type f -name "*.c")
+C_SOURCES += $(shell find Core/embedcli -type f -name "*.c")
 
 # 2. Автоматический поиск модулей в конфиге
 HAL_CONF := Core/Inc/stm32h7xx_hal_conf.h

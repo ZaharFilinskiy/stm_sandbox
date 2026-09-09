@@ -41,6 +41,7 @@ extern "C" {
 #endif
 
 #include "ssd1306.h"
+#include "opt.h"
 #include "ssd1306_tests.h"
 
 #include "ssd1306_fonts.h"

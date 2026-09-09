@@ -103,8 +103,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
     pin_RX_TX.Pin = GPIO_PIN_8 | GPIO_PIN_9;
     pin_RX_TX.Alternate = GPIO_AF7_USART3;
     pin_RX_TX.Mode = GPIO_MODE_AF_PP;
-    pin_RX_TX.Pull = GPIO_NOPULL;
-    pin_RX_TX.Speed = GPIO_SPEED_FREQ_LOW;
+    pin_RX_TX.Pull = GPIO_PULLUP;
+    pin_RX_TX.Speed = GPIO_SPEED_FREQ_MEDIUM;
     HAL_GPIO_Init(GPIOD,&pin_RX_TX);
     HAL_NVIC_SetPriority(USART3_IRQn,6,0);
     HAL_NVIC_EnableIRQ(USART3_IRQn);
@@ -240,6 +240,58 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
 
 }
 
-/* USER CODE BEGIN 1 */
+void HAL_ETH_MspInit(ETH_HandleTypeDef *heth)
+{
+  if (heth->Instance == ETH)
+  {
+  
+    GPIO_InitTypeDef GPIO_InitPA = {0};
+    GPIO_InitTypeDef GPIO_InitPC = {0};
+    GPIO_InitTypeDef GPIO_InitPG = {0};
+    GPIO_InitTypeDef GPIO_InitPB = {0};
 
-/* USER CODE END 1 */
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    __HAL_RCC_GPIOC_CLK_ENABLE();
+    __HAL_RCC_GPIOG_CLK_ENABLE();
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    GPIO_InitPA.Alternate = GPIO_AF11_ETH;
+    GPIO_InitPA.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitPA.Pin = GPIO_PIN_1 |  GPIO_PIN_2 | GPIO_PIN_7;
+    GPIO_InitPA.Pull = GPIO_NOPULL;
+    GPIO_InitPA.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOA,&GPIO_InitPA);
+
+    GPIO_InitPC.Alternate = GPIO_AF11_ETH;
+    GPIO_InitPC.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitPC.Pin = GPIO_PIN_1 |  GPIO_PIN_4 |  GPIO_PIN_5;
+    GPIO_InitPC.Pull = GPIO_NOPULL;
+    GPIO_InitPC.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOC,&GPIO_InitPC);
+
+    GPIO_InitPG.Alternate = GPIO_AF11_ETH;
+    GPIO_InitPG.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitPG.Pin = GPIO_PIN_11 |  GPIO_PIN_13;
+    GPIO_InitPG.Pull = GPIO_NOPULL;
+    GPIO_InitPG.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOG,&GPIO_InitPG);
+
+    GPIO_InitPB.Alternate = GPIO_AF11_ETH;
+    GPIO_InitPB.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitPB.Pin =  GPIO_PIN_13;
+    GPIO_InitPB.Pull = GPIO_NOPULL;
+    GPIO_InitPB.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+    HAL_GPIO_Init(GPIOB,&GPIO_InitPB);
+
+    HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(ETH_IRQn);
+
+    __HAL_RCC_ETH1MAC_CLK_ENABLE();
+    __HAL_RCC_ETH1TX_CLK_ENABLE();
+    __HAL_RCC_ETH1RX_CLK_ENABLE();
+  }
+  else
+  {
+    Error_Handler();
+  }
+}

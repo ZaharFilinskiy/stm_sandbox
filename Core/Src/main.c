@@ -22,7 +22,25 @@
 #ifndef HSEM_ID_0
 #define HSEM_ID_0 (0U) /* HW semaphore 0*/
 #endif
+#ifndef __ETHERNETIF_H__
+	#include "ether.h"
+#endif
 
+#ifndef TFTP_EXAMPLE_H
+	#include <tftp_serv.h>
+#endif
+
+#include <lwi.h>
+
+#include <lan8742.h>
+
+#ifndef EMBEDDED_CLI
+	#include <embedded_cli.h>
+#endif
+
+struct embedded_cli cli;
+
+ETH_HandleTypeDef  heth;
 
 IWDG_HandleTypeDef hiwdg1;
 
@@ -34,7 +52,22 @@ UART_HandleTypeDef huart;
 
 I2C_HandleTypeDef i2c1;
 
+#define LEN_BUF_ETH 1524
+uint8_t mac[6] = {0x00, 0x12, 0x6D, 0x00, 0x01, 0x02};
+uint8_t RXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
+uint8_t TXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
+ETH_TxPacketConfigTypeDef TX;
+ETH_BufferTypeDef dwTX;
+
+ETH_DMADescTypeDef TX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")))  __attribute__((aligned(32))) ;
+ETH_DMADescTypeDef RX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".RxDecripSection"))) __attribute__((aligned(32)));
+uint8_t data[] = "ethINIT";
+uint8_t bdata[] = "ethNOinit";
+
 void SystemClock_Config(void);
+
+static void MX_ETH_Init(void);
+
 static void MX_GPIO_Init(void);
 
 static void MX_TIM2_Init(void);
@@ -44,11 +77,69 @@ static void MX_RTC_Init(void);
 static void MX_UART_Init(void);
 
 static void MX_I2C_INIT(void);
-
+extern void Ethernet_Link_Periodic_Handle(struct netif *netif);
+extern struct netif gnetif;
 uint8_t buftx[] = "VASAP\n";
 
 uint8_t bufrx[5];
+uint8_t bufsv[] = {
+    /* Destination MAC */
+    0x01, 0x0C, 0xCD, 0x04, 0x00, 0x01,
 
+    /* Source MAC */
+    0x00, 0x12, 0x6D, 0x00, 0x01, 0x02,
+
+    /* EtherType = IEC 61850 Sampled Values */
+    0x88, 0xBA,
+
+    /* ---- SV Header (8 байт) ---- */
+    /* APPID */
+    0x40, 0x00,
+    /* Length = 8 (header) + 38 (savPdu) = 46 = 0x002E */
+    0x00, 0x2E,
+    /* Reserved1 */
+    0x00, 0x00,
+    /* Reserved2 */
+    0x00, 0x00,
+
+    /* ---- savPdu (APDU), length = 0x24 (36) ---- */
+    0x60, 0x24,
+
+    /* noASDU = 1 */
+    0x80, 0x01,
+    0x01,
+
+    /* seqASDU, length = 0x1F (31) */
+    0xA2, 0x1F,
+
+    /* ASDU1, length = 0x1D (29) */
+    0x30, 0x1D,
+
+    /* svID = "TEST" */
+    0x80, 0x04,
+    0x54, 0x45, 0x53, 0x54,
+
+    /* smpCnt = 1 */
+    0x82, 0x02,
+    0x00, 0x01,
+
+    /* confRev = 1 */
+    0x83, 0x04,
+    0x00, 0x00, 0x00, 0x01,
+
+    /* smpSynch = 0 */
+    0x85, 0x01,
+    0x00,
+
+    /* seqData (пример, 8 значений) */
+    0x87, 0x08,
+    0x11, 0x22, 0x33, 0x44,
+    0x55, 0x66, 0x77, 0x88
+};
+
+void cli_output(void *data, char ch, bool is_last);
+
+void app_on_rx_byte(char ch);
 /**
   * @brief  The application entry point.
   * @retval int
@@ -116,13 +207,21 @@ int main(void)
 	MX_RTC_Init();
 
 	MX_UART_Init();
+
+	embedded_cli_init(&cli, "zah> ", cli_output, NULL);
+
+    embedded_cli_prompt(&cli);
 	
 	MX_I2C_INIT();
+
+	MX_ETH_Init();
+
+	MX_LWIP_Init();
 	
 	//Код библиотеки настройки дисплея ssd1306
-	ssd1306_Init();
-	ssd1306_Fill(Black);
-	ssd1306_TestAll();
+	// ssd1306_Init();
+	// ssd1306_Fill(Black);
+	// ssd1306_TestAll();
 	// ssd1306_SetCursor(0, 0);
 	// ssd1306_WriteString("Privet!", Font_7x10, White);
 	// ssd1306_UpdateScreen();
@@ -142,52 +241,52 @@ int main(void)
 	RTC_DateTypeDef dat;
 	char min_str[3]; // "00" + '\0'
 	char date_str[3]; // "00" + '\0'
+	HAL_ETH_Start(&heth);
+	TX.TxBuffer = &dwTX;
+	TX.TxBuffer->buffer = TXBUF;
+	TX.TxBuffer->len = sizeof(bufsv);
+	memcpy(TXBUF,bufsv,sizeof(bufsv));
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+
+	tftp_example_init_server();
+
+	uint32_t bootadr = READ_REG(FLASH->BOOT7_CUR);
+
+	char msg[32];
+
+	int n = snprintf(msg, sizeof(msg), "bootadr=0x%08lX\r\n", (unsigned long)bootadr);
+
+	uint8_t mesg ={0};
+
 	while (1)
 	{
-		/* USER CODE END WHILE */
-		/* USER CODE BEGIN 3 */
-		//	  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13))
-		//	  {
-		//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_SET);
-		//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
-		//		  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET);
-		//	  }
-		//	  else
-		//	  {
-		//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0, GPIO_PIN_RESET);
-		//		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
-		//		  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_RESET);
-		//	  }
-		memset(bufrx, 0, sizeof(bufrx));                          // очистили буфер приёма
-		memcpy(bufrx, buftx, sizeof(bufrx) - 1);                 // скопировали "VASA"
-		bufrx[sizeof(bufrx) - 1] = '\0';                         // завершающий ноль
-
-		if (huart.gState == HAL_UART_STATE_READY)
-		{
-			rvl = HAL_UART_Transmit_IT(&huart, buftx, sizeof(buftx) - 1);
-
-			if (rvl != HAL_OK)
-			{
-				HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-			}
-		}
-		// HAL_RTC_GetTime(&hrtc,&mi,RTC_FORMAT_BIN);
-		// HAL_RTC_GetDate(&hrtc,&dat,RTC_FORMAT_BIN);
-		// ssd1306_SetCursor(0, 0);
-		// snprintf(min_str, sizeof(min_str), "%02u", mi.Seconds);
-		// ssd1306_WriteString(min_str, Font_7x10, White);
-		// ssd1306_UpdateScreen();
-		// ssd1306_SetCursor(2, 10);
-		// snprintf(date_str, sizeof(date_str), "%02u", dat.Date);
-		// ssd1306_WriteString(date_str, Font_7x10, White);
-		// ssd1306_UpdateScreen();
 		
-		HAL_Delay(1000);
-		// HAL_PWR_EnterSLEEPMode
-		// HAL_UART_Receive();
+		// memset(bufrx, 0, sizeof(bufrx));                          // очистили буфер приёма
+		// memcpy(bufrx, buftx, sizeof(bufrx) - 1);                 // скопировали "VASA"
+		// bufrx[sizeof(bufrx) - 1] = '\0';                         // завершающий ноль
 
+		// if (huart.gState == HAL_UART_STATE_READY)
+		// {
+		// 	rvl = HAL_UART_Transmit_IT(&huart, (uint8_t*)msg, (uint16_t)n);
+
+		// 	if (rvl != HAL_OK)
+		// 	{
+		// 		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+		// 	}
+		// }
+
+		// HAL_ETH_Transmit(&heth,&TX,1000);
+
+		// HAL_Delay(10);
+
+		HAL_UART_Receive(&huart,&mesg,1,HAL_MAX_DELAY);
+		
+		app_on_rx_byte((char)mesg);
+
+		MX_LWIP_Process();
+
+		sys_check_timeouts();
 	}
 	/* USER CODE END 3 */
 }
@@ -267,6 +366,29 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     if (huart->Instance == USART3)
     {
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+    }
+}
+
+
+void cli_output(void *data, char ch, bool is_last)
+{
+	UNUSED(data);
+	UNUSED (is_last);
+	HAL_UART_Transmit(&huart, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+
+}
+
+void app_on_rx_byte(char ch)
+{
+    if (embedded_cli_insert_char(&cli, ch)) {
+        char **argv;
+        int argc = embedded_cli_argc(&cli, &argv);
+
+        if (argc > 0) {
+            // handle_command(argc, argv);
+        }
+
+        embedded_cli_prompt(&cli);
     }
 }
 
@@ -525,7 +647,24 @@ static void MX_RTC_Init(void)
 
 }
 
-/* USER CODE END 4 */
+void MX_ETH_Init(void)
+{
+	heth.Instance = ETH;
+	heth.Init.MACAddr = mac;
+	heth.Init.MediaInterface = HAL_ETH_RMII_MODE;
+	heth.Init.TxDesc = TX_DESC;
+	heth.Init.RxDesc = RX_DESC;
+	heth.Init.RxBuffLen = LEN_BUF_ETH;
+
+	if (HAL_ETH_Init(&heth))
+	{
+		HAL_UART_Transmit_IT(&huart,bdata,sizeof(bdata));
+		Error_Handler();
+	}
+	HAL_UART_Transmit_IT(&huart,data,sizeof(data));
+
+}
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
