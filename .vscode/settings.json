@@ -1,8 +1,0 @@
-﻿{
-    "files.associations": {
-        "*.h": "c"
-    },
-    "editor.semanticHighlighting.enabled": true,
-    "C_Cpp.enhancedColorization": "enabled",
-    "C_Cpp.intelliSenseEngine": "default"
-}
