@@ -77,6 +77,7 @@ INCLUDES := \
 INCLUDES += $(shell find Core/ssd1306 -type d -print | sed 's/^/-I/')
 INCLUDES += $(shell find Core/lwip -type d -print | sed 's/^/-I/')
 INCLUDES += $(shell find Core/embedcli -type d -print | sed 's/^/-I/')
+INCLUDES += $(shell find Core/FreeRtos -type d -print | sed 's/^/-I/')
 # ===================== Sources =====================
 # 1. Список базовых файлов
 C_SOURCES := \
@@ -94,6 +95,7 @@ Core/phy/lan8742.c
 C_SOURCES += $(shell find Core/ssd1306 -type f -name "*.c")
 C_SOURCES += $(shell find Core/lwip -type f -name "*.c")
 C_SOURCES += $(shell find Core/embedcli -type f -name "*.c")
+C_SOURCES += $(shell find Core/FreeRtos -type f -name "*.c")
 
 # 2. Автоматический поиск модулей в конфиге
 HAL_CONF := Core/Inc/stm32h7xx_hal_conf.h

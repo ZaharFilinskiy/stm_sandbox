@@ -1,27 +1,13 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
-#include "main.h"
+/**************************************************************************
+ * @file       Core/src/main.c
+ * @author     Z.Filinskiy
+ * @brief      Program start and common board state API implementation
+ *************************************************************************/
+
+ #include "main.h"
+
 #include <stdio.h>
-#ifndef HSEM_ID_0
-#define HSEM_ID_0 (0U) /* HW semaphore 0*/
-#endif
+
 #ifndef __ETHERNETIF_H__
 	#include "ether.h"
 #endif
@@ -38,6 +24,14 @@
 	#include <embedded_cli.h>
 #endif
 
+
+/* Scheduler includes. */
+#include "include/FreeRTOS.h"
+
+#include "include/task.h"
+
+#include "include/queue.h"
+
 struct embedded_cli cli;
 
 ETH_HandleTypeDef  heth;
@@ -52,16 +46,24 @@ UART_HandleTypeDef huart;
 
 I2C_HandleTypeDef i2c1;
 
-#define LEN_BUF_ETH 1524
-uint8_t mac[6] = {0x00, 0x12, 0x6D, 0x00, 0x01, 0x02};
-uint8_t RXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
-uint8_t TXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
 ETH_TxPacketConfigTypeDef TX;
+
 ETH_BufferTypeDef dwTX;
 
-ETH_DMADescTypeDef TX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")))  __attribute__((aligned(32))) ;
+#define LEN_BUF_ETH 1524
+
+uint8_t mac[6] = {0x00, 0x12, 0x6D, 0x00, 0x01, 0x02};
+
+uint8_t RXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
+
+uint8_t TXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
+
+ETH_DMADescTypeDef TX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")))  __attribute__((aligned(32)));
+
 ETH_DMADescTypeDef RX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".RxDecripSection"))) __attribute__((aligned(32)));
+
 uint8_t data[] = "ethINIT";
+
 uint8_t bdata[] = "ethNOinit";
 
 void SystemClock_Config(void);
@@ -77,11 +79,17 @@ static void MX_RTC_Init(void);
 static void MX_UART_Init(void);
 
 static void MX_I2C_INIT(void);
+
 extern void Ethernet_Link_Periodic_Handle(struct netif *netif);
+
+void cli_output(void *data, char ch, bool is_last);
+
+void app_on_rx_byte(char ch);
+
 extern struct netif gnetif;
-uint8_t buftx[] = "VASAP\n";
 
 uint8_t bufrx[5];
+
 uint8_t bufsv[] = {
     /* Destination MAC */
     0x01, 0x0C, 0xCD, 0x04, 0x00, 0x01,
@@ -136,70 +144,26 @@ uint8_t bufsv[] = {
     0x11, 0x22, 0x33, 0x44,
     0x55, 0x66, 0x77, 0x88
 };
+static void lwipProc( void * pvParameters );
 
-void cli_output(void *data, char ch, bool is_last);
+static void uartProc(void* pvParameters);
 
-void app_on_rx_byte(char ch);
+
+static void uartSend(void* pvParameters);
+
+uint8_t mesg ={0};
+
 /**
   * @brief  The application entry point.
   * @retval int
   */
 int main(void)
 {
-
-	/* USER CODE BEGIN 1 */
-
-	/* USER CODE END 1 */
-	/* USER CODE BEGIN Boot_Mode_Sequence_0 */
-	// int32_t timeout;
-	/* USER CODE END Boot_Mode_Sequence_0 */
-
-	/* USER CODE BEGIN Boot_Mode_Sequence_1 */
-	  /* Wait until CPU2 boots and enters in stop mode or timeout*/
-	  //  timeout = 0xFFFF;
-	  //  while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) != RESET) && (timeout-- > 0));
-	  //  if ( timeout < 0 )
-	  //  {
-	  //  Error_Handler();
-	  //  }
-	  /* USER CODE END Boot_Mode_Sequence_1 */
-	    /* MCU Configuration--------------------------------------------------------*/
-
-	    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
 	HAL_Init();
 
-
-
-	// HAL_GPIO_WritePin(GPIOE, GPIO_PIN_1, GPIO_PIN_SET); // Включить желтый светодиод
-	/* USER CODE BEGIN Init */
-
-	/* USER CODE END Init */
-
-	/* Configure the system clock */
 	SystemClock_Config();
-	/* USER CODE BEGIN Boot_Mode_Sequence_2 */
-	/* When system initialization is finished, Cortex-M7 will release Cortex-M4 by means of
-	HSEM notification */
-	/*HW semaphore Clock enable*/
-	//__HAL_RCC_HSEM_CLK_ENABLE();
-	///*Take HSEM */
-	//HAL_HSEM_FastTake(HSEM_ID_0);
-	///*Release HSEM in order to notify the CPU2(CM4)*/
-	//HAL_HSEM_Release(HSEM_ID_0,0);
-	///* wait until CPU2 wakes up from stop mode */
-	//timeout = 0xFFFF;
-	//while((__HAL_RCC_GET_FLAG(RCC_FLAG_D2CKRDY) == RESET) && (timeout-- > 0));
-	//if ( timeout < 0 )
-	//{
-	//Error_Handler();
-	//}
-	/* USER CODE END Boot_Mode_Sequence_2 */
-
-	  /* USER CODE BEGIN SysInit */
-
-	  /* USER CODE END SysInit */
-
-	  /* Initialize all configured peripherals */
+	
+	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
 	//  MX_IWDG1_Init();
 	MX_TIM2_Init();
@@ -218,76 +182,57 @@ int main(void)
 
 	MX_LWIP_Init();
 	
-	//Код библиотеки настройки дисплея ssd1306
+	// библиотека дисплея ssd1306
 	// ssd1306_Init();
-	// ssd1306_Fill(Black);
-	// ssd1306_TestAll();
-	// ssd1306_SetCursor(0, 0);
-	// ssd1306_WriteString("Privet!", Font_7x10, White);
-	// ssd1306_UpdateScreen();
 	
 	HAL_NVIC_SetPriority(TIM2_IRQn, 5, 0);
+
 	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+
 	HAL_TIM_Base_Start_IT(&htim2);
-	buftx[0] = 'V';
-	buftx[1] = 'A';
-	buftx[2] = 'S';
-	buftx[3] = 'A';
-	buftx[4] = 'P';
-	buftx[5] = '\n';
-	/* USER CODE END 2 */
-	HAL_StatusTypeDef rvl;
-	RTC_TimeTypeDef mi;
-	RTC_DateTypeDef dat;
-	char min_str[3]; // "00" + '\0'
-	char date_str[3]; // "00" + '\0'
+
 	HAL_ETH_Start(&heth);
+
 	TX.TxBuffer = &dwTX;
+
 	TX.TxBuffer->buffer = TXBUF;
+
 	TX.TxBuffer->len = sizeof(bufsv);
+
 	memcpy(TXBUF,bufsv,sizeof(bufsv));
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
 
 	tftp_example_init_server();
 
-	uint32_t bootadr = READ_REG(FLASH->BOOT7_CUR);
+	 /* Start the tasks defined within this file/specific to this demo. */
+    BaseType_t ret = xTaskCreate( lwipProc, "lwip", 1024, NULL, 1, NULL );
 
-	char msg[32];
+	BaseType_t ter = xTaskCreate( uartProc, "uart", 1024, NULL, 1, NULL );
 
-	int n = snprintf(msg, sizeof(msg), "bootadr=0x%08lX\r\n", (unsigned long)bootadr);
+	BaseType_t arr = xTaskCreate( uartSend, "uartSend", 1024, NULL, 1, NULL );
 
-	uint8_t mesg ={0};
-
-	while (1)
+	if ((ret != 1) | (ter != 1))
 	{
-		
-		// memset(bufrx, 0, sizeof(bufrx));                          // очистили буфер приёма
-		// memcpy(bufrx, buftx, sizeof(bufrx) - 1);                 // скопировали "VASA"
-		// bufrx[sizeof(bufrx) - 1] = '\0';                         // завершающий ноль
-
-		// if (huart.gState == HAL_UART_STATE_READY)
-		// {
-		// 	rvl = HAL_UART_Transmit_IT(&huart, (uint8_t*)msg, (uint16_t)n);
-
-		// 	if (rvl != HAL_OK)
-		// 	{
-		// 		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-		// 	}
-		// }
-
-		// HAL_ETH_Transmit(&heth,&TX,1000);
-
-		// HAL_Delay(10);
-
-		HAL_UART_Receive(&huart,&mesg,1,HAL_MAX_DELAY);
-		
-		app_on_rx_byte((char)mesg);
-
-		MX_LWIP_Process();
-
-		sys_check_timeouts();
+		Error_Handler();
 	}
+	
+    // xTaskCreate( prvLCDTask, "LCD", configLCD_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL );
+    // xTaskCreate( prvFlashTask, "Flash", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, NULL );
+
+    /* Start the scheduler. */
+    vTaskStartScheduler();
+
+
+	// while (1)
+	// {
+
+	// 	HAL_UART_Receive(&huart,&mesg,1,HAL_MAX_DELAY);
+		
+	// 	app_on_rx_byte((char)mesg);
+
+	// 	MX_LWIP_Process();
+
+	// 	sys_check_timeouts();
+	// }
 	/* USER CODE END 3 */
 }
 
@@ -665,6 +610,43 @@ void MX_ETH_Init(void)
 
 }
 
+
+void lwipProc( void * pvParameters )
+{
+	while (1)
+	{
+	
+		MX_LWIP_Process();
+
+		sys_check_timeouts();
+
+	}
+
+}
+
+
+static void uartProc(void* pvParameters)
+{
+
+    uint8_t ch;
+    for (;;)
+    {
+        if (HAL_UART_Receive_IT(&huart, &ch, 1) == HAL_OK)
+        {
+            app_on_rx_byte((char)ch);
+        }
+        // при таймауте цикл идёт дальше, задача не залипает навсегда
+    }
+}
+
+
+static void uartSend(void* pvParameters)
+{
+	while (1)
+	{
+		HAL_UART_Transmit_IT(&huart,bdata,sizeof(bdata));
+	}
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
