@@ -38,6 +38,7 @@
 #endif
 
 #include <main.h>
+#include "flash_access.h"
 #if LWIP_UDP
 
 /* Define a base directory for TFTP access
@@ -58,7 +59,8 @@
 #endif
 
 static char full_filename[256];
-static uint16_t sdf = 1; 
+static uint16_t sdf = 1;
+static size_t flash_written;
 static void *
 tftp_open_file(const char* fname, u8_t is_write)
 {
@@ -66,6 +68,7 @@ tftp_open_file(const char* fname, u8_t is_write)
   full_filename[sizeof(full_filename)-1] = 0;
 
   if (is_write) {
+    flash_written = 0;
     return (void*)sdf;
   } else {
     return (void*)sdf;
@@ -96,51 +99,41 @@ tftp_read(void* handle, void* buf, int bytes)
 }
 static int writeflashDat(uint32_t* pbuf, size_t len, uint32_t* bootadr)
 {
-  static size_t slen;
+  /* Contain this experimental updater in the inactive 384 KiB firmware slot.
+   * Never let a malformed transfer reach the bootloader, CM4 or settings. */
+  const uint32_t slot_size = 384U * 1024U;
+  uint32_t base = *bootadr;
+  uint32_t vector = SCB->VTOR;
+  if ((base != 0x08020000U && base != 0x08080000U) ||
+      (vector >= base && vector < base + slot_size) ||
+      flash_written > slot_size || len > slot_size - flash_written ||
+      (len % 32U) != 0 || !flash_access_take()) return -1;
 
-  HAL_StatusTypeDef rvl;
-
-  uint32_t* data = pbuf;
-
-  uint32_t boot = *bootadr + slen;
-
-  rvl = HAL_FLASH_Unlock();
-  if (rvl != HAL_OK)
-  {
-    return -1;
+  int result = -1;
+  if (HAL_FLASH_Unlock() != HAL_OK) goto done;
+  for (size_t offset = 0; offset < len; offset += 32U) {
+    uint32_t word[8] __attribute__((aligned(32)));
+    memcpy(word, (const uint8_t *)pbuf + offset, sizeof(word));
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, base + flash_written,
+                          (uint32_t)word) != HAL_OK) goto lock;
+    flash_written += sizeof(word);
   }
-
-  size_t words = len / 4; /* длина в 32-битных словах */
-
-  for (size_t i = 0; i < words; i += FLASH_NB_32BITWORD_IN_FLASHWORD)
-  {
-    rvl = HAL_FLASH_Program(FLASH_TYPEPROGRAM_FLASHWORD, boot, (uint32_t)&data[i]);
-
-    if (rvl != HAL_OK)
-    {
-      HAL_FLASH_Lock();
-      return -1;
-    }
-
-    boot += FLASH_NB_32BITWORD_IN_FLASHWORD * 4U; /* 32 байта = один flash word */
-    slen += FLASH_NB_32BITWORD_IN_FLASHWORD * 4U;
-  }
-
-  rvl = HAL_FLASH_Lock();
-
-  if (rvl != HAL_OK)
-  {
-    return -1;
-  }
-
-  return 0;
+  result = 0;
+lock:
+  if (HAL_FLASH_Lock() != HAL_OK) result = -1;
+done:
+  flash_access_give();
+  return result;
 }
 static uint32_t badr;
 void resetaftcloe(void)
 {
+    if ((SCB->VTOR >= 0x08020000U && SCB->VTOR < 0x080A0000U) ||
+        !flash_access_take()) return;
     /* Разрешаем доступ к Flash */
     if (HAL_FLASH_Unlock() != HAL_OK)
     {
+        flash_access_give();
         return;
     }
 
@@ -148,6 +141,7 @@ void resetaftcloe(void)
     if (HAL_FLASH_OB_Unlock() != HAL_OK)
     {
         HAL_FLASH_Lock();
+        flash_access_give();
         return;
     }
     FLASH_EraseInitTypeDef fer;
@@ -165,6 +159,9 @@ void resetaftcloe(void)
       Error_Handler();
     }
     
+    HAL_FLASH_OB_Lock();
+    HAL_FLASH_Lock();
+    flash_access_give();
     NVIC_SystemReset();
 }
 

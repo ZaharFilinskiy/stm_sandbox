@@ -46,11 +46,17 @@ MEMORY
 {
   RAM_D1 (xrw)   : ORIGIN = 0x24000000, LENGTH =  512K
   FLASH   (rx)   : ORIGIN = 0x08000000, LENGTH = 1024K    /* Memory is divided. Actual start is 0x8000000 and actual length is 2048K */
+  SETTINGS_A (r) : ORIGIN = 0x081C0000, LENGTH = 128K
+  SETTINGS_B (r) : ORIGIN = 0x081E0000, LENGTH = 128K
   DTCMRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K
   RAM_D2 (xrw)   : ORIGIN = 0x30000000, LENGTH = 288K
   RAM_D3 (xrw)   : ORIGIN = 0x38000000, LENGTH = 64K
   ITCMRAM (xrw)  : ORIGIN = 0x00000000, LENGTH = 64K
 }
+
+/* Reserved settings sectors: no loadable section, so ELF flashing preserves them. */
+__settings_a_start__ = ORIGIN(SETTINGS_A);
+__settings_b_start__ = ORIGIN(SETTINGS_B);
 
 /* Sections */
 SECTIONS

@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "lwi.h"
+#include "settings.h"
 #include "lwip/init.h"
 #include "lwip/netif.h"
 #if defined ( __CC_ARM )  /* MDK ARM Compiler */
@@ -66,12 +67,14 @@ void MX_LWIP_Init(void)
 //   ipaddr.addr = 0;
 //   netmask.addr = 0;
 //   gw.addr = 0;
-    IP4_ADDR(&ipaddr,192,168,1,123);
-    IP4_ADDR(&netmask,255, 255, 255, 0);
-    IP4_ADDR(&gw,192, 168, 1, 1);
+    const DeviceSettings *settings = settings_boot();
+    IP4_ADDR(&ipaddr, settings->ip[0], settings->ip[1], settings->ip[2], settings->ip[3]);
+    IP4_ADDR(&netmask, settings->mask[0], settings->mask[1], settings->mask[2], settings->mask[3]);
+    IP4_ADDR(&gw, settings->gateway[0], settings->gateway[1], settings->gateway[2], settings->gateway[3]);
 
-  /* add the network interface (IPv4/IPv6) without RTOS */
-  netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init, &ethernet_input);
+  if (netif_add(&gnetif, &ipaddr, &netmask, &gw, NULL, &ethernetif_init, &ethernet_input) == NULL)
+    Error_Handler();
+  netif_set_hostname(&gnetif, settings->name);
 
   /* Registers the default network interface */
   netif_set_default(&gnetif);

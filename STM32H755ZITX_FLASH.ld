@@ -48,11 +48,17 @@ MEMORY
   FLASH   (rx)   : ORIGIN = 0x08000000, LENGTH = 128K    /* Memory block for startup */
   FLASH1  (rx)   : ORIGIN = 0x08020000, LENGTH = 384K    /* Memory block firmaweare 1 */
   FLASH2  (rx)   : ORIGIN = 0x08080000, LENGTH = 384K    /* Memory block firmaweare 2 */
+  SETTINGS_A (r) : ORIGIN = 0x081C0000, LENGTH = 128K
+  SETTINGS_B (r) : ORIGIN = 0x081E0000, LENGTH = 128K
   DTCMRAM (xrw)  : ORIGIN = 0x20000000, LENGTH = 128K
   RAM_D2 (xrw)   : ORIGIN = 0x30000000, LENGTH = 288K
   RAM_D3 (xrw)   : ORIGIN = 0x38000000, LENGTH = 64K
   ITCMRAM (xrw)  : ORIGIN = 0x00000000, LENGTH = 64K
 }
+
+/* Reserved settings sectors: no loadable section, so ELF flashing preserves them. */
+__settings_a_start__ = ORIGIN(SETTINGS_A);
+__settings_b_start__ = ORIGIN(SETTINGS_B);
 
 /* Sections */
 SECTIONS

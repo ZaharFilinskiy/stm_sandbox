@@ -21,7 +21,7 @@ LDSCRIPT := STM32H755ZITX_FLASH.ld
 
 # ===================== Flags =======================
 CFLAGS := $(MCUFLAGS)
-CFLAGS += -ffunction-sections -fdata-sections
+CFLAGS += -ffunction-sections -fdata-sections -MMD -MP
 CFLAGS += -std=gnu11
 CFLAGS += -DUSE_HAL_DRIVER
 CFLAGS += -DSTM32H755xx
@@ -74,10 +74,13 @@ INCLUDES := \
 # -I Core/lwip/include/netif/ppp \
 # -I Core/lwip/include/netif/ppp/polarssl 
 
-INCLUDES += $(shell find Core/ssd1306 -type d -print | sed 's/^/-I/')
-INCLUDES += $(shell find Core/lwip -type d -print | sed 's/^/-I/')
-INCLUDES += $(shell find Core/embedcli -type d -print | sed 's/^/-I/')
-INCLUDES += $(shell find Core/FreeRtos -type d -print | sed 's/^/-I/')
+# Native GNU make traversal: Windows find.exe is not the POSIX find tool.
+rwildcard = $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
+LIB_DIRS := Core/ssd1306 Core/lwip Core/embedcli Core/FreeRtos
+LIB_SOURCES := $(foreach d,$(LIB_DIRS),$(call rwildcard,$d/,*.c))
+LIB_HEADERS := $(foreach d,$(LIB_DIRS),$(call rwildcard,$d/,*.h))
+INCLUDES += $(addprefix -I,$(sort $(dir $(LIB_HEADERS))))
+INCLUDES += -ICore/lwip/include -ICore/lwip/system
 # ===================== Sources =====================
 # 1. Список базовых файлов
 C_SOURCES := \
@@ -92,14 +95,11 @@ Core/phy/lan8742.c
 # Core/ssd1306/ssd1306.c \
 # Core/ssd1306/ssd1306_fonts.c \
 # Core/ssd1306/ssd1306_tests.c	
-C_SOURCES += $(shell find Core/ssd1306 -type f -name "*.c")
-C_SOURCES += $(shell find Core/lwip -type f -name "*.c")
-C_SOURCES += $(shell find Core/embedcli -type f -name "*.c")
-C_SOURCES += $(shell find Core/FreeRtos -type f -name "*.c")
+C_SOURCES += $(LIB_SOURCES)
+C_SOURCES += Core/Src/app_cli.c Core/Src/settings.c Core/Src/settings_flash.c Core/Src/flash_access.c
 
-# 2. Автоматический поиск модулей в конфиге
-HAL_CONF := Core/Inc/stm32h7xx_hal_conf.h
-ENABLED_MODULES := $(shell grep "^\#define HAL_.*_MODULE_ENABLED" $(HAL_CONF) | sed 's/\#define HAL_\(.*\)_MODULE_ENABLED.*/\1/' | tr '[:upper:]' '[:lower:]')
+# Keep in sync with HAL_*_MODULE_ENABLED in Core/Inc/stm32h7xx_hal_conf.h.
+ENABLED_MODULES := eth iwdg rtc tim uart gpio dma mdma rcc flash exti pwr i2c cortex hsem
 
 # 3. Формируем список драйверов (фильтруем дубликаты через sort)
 HAL_DRIVER_DIR := Drivers/STM32H7xx_HAL_Driver/Src
@@ -137,7 +137,7 @@ $(BUILD)/%.o: %.S
 	@$(call MKDIR_P,$(dir $@))
 	$(AS) $(ASFLAGS) -c $< -o $@
 
-$(BUILD)/$(PROJECT).elf: $(OBJECTS)
+$(BUILD)/$(PROJECT).elf: $(OBJECTS) $(LDSCRIPT)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
 $(BUILD)/%.bin: $(BUILD)/%.elf
@@ -146,7 +146,7 @@ $(BUILD)/%.bin: $(BUILD)/%.elf
 $(BUILD)/%.hex: $(BUILD)/%.elf
 	$(OBJCOPY) -O ihex $< $@
 
-size:
+size: $(BUILD)/$(PROJECT).elf
 	$(SIZE) $(BUILD)/$(PROJECT).elf
 
 clean:
@@ -159,3 +159,5 @@ release:
 	$(MAKE) BUILD_TYPE=release all
 
 .PHONY: all clean size debug release
+
+-include $(OBJECTS:.o=.d)

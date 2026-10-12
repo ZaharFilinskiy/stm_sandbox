@@ -4,35 +4,17 @@
  * @brief      Program start and common board state API implementation
  *************************************************************************/
 
- #include "main.h"
+#include "main.h"
+#include "app_cli.h"
+#include "settings.h"
+#include "flash_access.h"
 
-#include <stdio.h>
-
-#ifndef __ETHERNETIF_H__
-	#include "ether.h"
-#endif
-
-#ifndef TFTP_EXAMPLE_H
-	#include <tftp_serv.h>
-#endif
-
-#include <lwi.h>
-
-#include <lan8742.h>
-
-#ifndef EMBEDDED_CLI
-	#include <embedded_cli.h>
-#endif
-
-
-/* Scheduler includes. */
-#include "include/FreeRTOS.h"
-
-#include "include/task.h"
-
-#include "include/queue.h"
-
-struct embedded_cli cli;
+#include "ether.h"
+#include "tftp_serv.h"
+#include "lwi.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
 
 ETH_HandleTypeDef  heth;
 
@@ -46,25 +28,13 @@ UART_HandleTypeDef huart;
 
 I2C_HandleTypeDef i2c1;
 
-ETH_TxPacketConfigTypeDef TX;
-
-ETH_BufferTypeDef dwTX;
-
-#define LEN_BUF_ETH 1524
+#define LEN_BUF_ETH ETH_RX_BUFFER_SIZE
 
 uint8_t mac[6] = {0x00, 0x12, 0x6D, 0x00, 0x01, 0x02};
 
-uint8_t RXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
-
-uint8_t TXBUF[LEN_BUF_ETH] __attribute__((aligned(32)));
-
 ETH_DMADescTypeDef TX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".TxDecripSection")))  __attribute__((aligned(32)));
 
-ETH_DMADescTypeDef RX_DESC[ETH_TX_DESC_CNT] __attribute__((section(".RxDecripSection"))) __attribute__((aligned(32)));
-
-uint8_t data[] = "ethINIT";
-
-uint8_t bdata[] = "ethNOinit";
+ETH_DMADescTypeDef RX_DESC[ETH_RX_DESC_CNT] __attribute__((section(".RxDecripSection"))) __attribute__((aligned(32)));
 
 void SystemClock_Config(void);
 
@@ -80,78 +50,18 @@ static void MX_UART_Init(void);
 
 static void MX_I2C_INIT(void);
 
-extern void Ethernet_Link_Periodic_Handle(struct netif *netif);
-
-void cli_output(void *data, char ch, bool is_last);
-
-void app_on_rx_byte(char ch);
-
-extern struct netif gnetif;
-
-uint8_t bufrx[5];
-
-uint8_t bufsv[] = {
-    /* Destination MAC */
-    0x01, 0x0C, 0xCD, 0x04, 0x00, 0x01,
-
-    /* Source MAC */
-    0x00, 0x12, 0x6D, 0x00, 0x01, 0x02,
-
-    /* EtherType = IEC 61850 Sampled Values */
-    0x88, 0xBA,
-
-    /* ---- SV Header (8 байт) ---- */
-    /* APPID */
-    0x40, 0x00,
-    /* Length = 8 (header) + 38 (savPdu) = 46 = 0x002E */
-    0x00, 0x2E,
-    /* Reserved1 */
-    0x00, 0x00,
-    /* Reserved2 */
-    0x00, 0x00,
-
-    /* ---- savPdu (APDU), length = 0x24 (36) ---- */
-    0x60, 0x24,
-
-    /* noASDU = 1 */
-    0x80, 0x01,
-    0x01,
-
-    /* seqASDU, length = 0x1F (31) */
-    0xA2, 0x1F,
-
-    /* ASDU1, length = 0x1D (29) */
-    0x30, 0x1D,
-
-    /* svID = "TEST" */
-    0x80, 0x04,
-    0x54, 0x45, 0x53, 0x54,
-
-    /* smpCnt = 1 */
-    0x82, 0x02,
-    0x00, 0x01,
-
-    /* confRev = 1 */
-    0x83, 0x04,
-    0x00, 0x00, 0x00, 0x01,
-
-    /* smpSynch = 0 */
-    0x85, 0x01,
-    0x00,
-
-    /* seqData (пример, 8 значений) */
-    0x87, 0x08,
-    0x11, 0x22, 0x33, 0x44,
-    0x55, 0x66, 0x77, 0x88
-};
 static void lwipProc( void * pvParameters );
 
 static void uartProc(void* pvParameters);
 
 
-static void uartSend(void* pvParameters);
-
-uint8_t mesg ={0};
+#define UART_RX_QUEUE_SIZE 256U
+static uint8_t rxByte;
+static QueueHandle_t uartRxQueue;
+static volatile uint32_t rxBytes, rxDropped, uartErrors, rxRestartErrors;
+static volatile uint32_t rxFaultGeneration;
+static uint32_t txErrors;
+static volatile uint32_t networkPolls, networkReady;
 
 /**
   * @brief  The application entry point.
@@ -159,81 +69,37 @@ uint8_t mesg ={0};
   */
 int main(void)
 {
-	HAL_Init();
+    /* Works both after the custom bootloader and direct debugger launch. */
+    extern const uint32_t g_pfnVectors[];
+    SCB->VTOR = (uint32_t)g_pfnVectors;
+    __DSB();
+    __ISB();
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_TIM2_Init();
+    MX_RTC_Init();
+    MX_UART_Init();
+    MX_I2C_INIT();
 
-	SystemClock_Config();
-	
-	/* Initialize all configured peripherals */
-	MX_GPIO_Init();
-	//  MX_IWDG1_Init();
-	MX_TIM2_Init();
+    settings_init();
+    if (!flash_access_init()) Error_Handler();
+    uartRxQueue = xQueueCreate(UART_RX_QUEUE_SIZE, sizeof(uint8_t));
+    if (uartRxQueue == NULL) Error_Handler();
+    vQueueAddToRegistry(uartRxQueue, "uart-rx");
 
-	MX_RTC_Init();
+    HAL_NVIC_SetPriority(TIM2_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(TIM2_IRQn);
+    if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK) Error_Handler();
 
-	MX_UART_Init();
-
-	embedded_cli_init(&cli, "zah> ", cli_output, NULL);
-
-    embedded_cli_prompt(&cli);
-	
-	MX_I2C_INIT();
-
-	MX_ETH_Init();
-
-	MX_LWIP_Init();
-	
-	// библиотека дисплея ssd1306
-	// ssd1306_Init();
-	
-	HAL_NVIC_SetPriority(TIM2_IRQn, 5, 0);
-
-	HAL_NVIC_EnableIRQ(TIM2_IRQn);
-
-	HAL_TIM_Base_Start_IT(&htim2);
-
-	HAL_ETH_Start(&heth);
-
-	TX.TxBuffer = &dwTX;
-
-	TX.TxBuffer->buffer = TXBUF;
-
-	TX.TxBuffer->len = sizeof(bufsv);
-
-	memcpy(TXBUF,bufsv,sizeof(bufsv));
-
-	tftp_example_init_server();
-
-	 /* Start the tasks defined within this file/specific to this demo. */
-    BaseType_t ret = xTaskCreate( lwipProc, "lwip", 1024, NULL, 1, NULL );
-
-	BaseType_t ter = xTaskCreate( uartProc, "uart", 1024, NULL, 1, NULL );
-
-	BaseType_t arr = xTaskCreate( uartSend, "uartSend", 1024, NULL, 1, NULL );
-
-	if ((ret != 1) | (ter != 1))
-	{
-		Error_Handler();
-	}
-	
-    // xTaskCreate( prvLCDTask, "LCD", configLCD_TASK_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL );
-    // xTaskCreate( prvFlashTask, "Flash", configMINIMAL_STACK_SIZE, NULL, mainFLASH_TASK_PRIORITY, NULL );
-
-    /* Start the scheduler. */
+    /* Same priority: preemptive time slicing keeps both tasks progressing.
+     * Only lwipProc owns the NO_SYS lwIP stack and Ethernet driver.
+     * USART RX is armed inside uartProc after the scheduler has started. */
+    if (xTaskCreate(lwipProc, "lwip", 1024, NULL, 1, NULL) != pdPASS ||
+        xTaskCreate(uartProc, "cli", 1024, NULL, 1, NULL) != pdPASS)
+        Error_Handler();
     vTaskStartScheduler();
-
-
-	// while (1)
-	// {
-
-	// 	HAL_UART_Receive(&huart,&mesg,1,HAL_MAX_DELAY);
-		
-	// 	app_on_rx_byte((char)mesg);
-
-	// 	MX_LWIP_Process();
-
-	// 	sys_check_timeouts();
-	// }
-	/* USER CODE END 3 */
+    Error_Handler();
 }
 
 void MX_I2C_INIT()
@@ -280,8 +146,6 @@ void MX_UART_Init()
 	huart.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
 	huart.Init.Mode = UART_MODE_TX_RX;
 	huart.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-	// huart.pRxBuffPtr = &bufrx;
-	// huart.pTxBuffPtr = &buftx;
 
 	rvl = HAL_UART_Init(&huart);
 
@@ -297,44 +161,53 @@ void USART3_IRQHandler(void)
     HAL_UART_IRQHandler(&huart);
 }
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
 {
-    if (huart->Instance == USART3)
-    {
-       HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+    if (uart->Instance != USART3) return;
+    BaseType_t woken = pdFALSE;
+    ++rxBytes;
+    /* Queue copies the byte before the receive buffer is reused by HAL. */
+    if (xQueueSendFromISR(uartRxQueue, &rxByte, &woken) != pdPASS) {
+        ++rxDropped;
+        ++rxFaultGeneration;
     }
+    if (HAL_UART_Receive_IT(uart, &rxByte, 1) != HAL_OK) {
+        ++rxRestartErrors;
+        ++rxFaultGeneration;
+    }
+    portYIELD_FROM_ISR(woken);
 }
 
-
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *uart)
 {
-    if (huart->Instance == USART3)
-    {
-        HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
-    }
+    if (uart->Instance != USART3) return;
+    ++uartErrors;
+    ++rxFaultGeneration;
+    /* HAL ends RX on overrun. Non-blocking errors can leave RX armed. */
+    if (uart->RxState == HAL_UART_STATE_READY &&
+        HAL_UART_Receive_IT(uart, &rxByte, 1) != HAL_OK)
+        ++rxRestartErrors;
 }
 
-
-void cli_output(void *data, char ch, bool is_last)
+void app_cli_putchar(char ch)
 {
-	UNUSED(data);
-	UNUSED (is_last);
-	HAL_UART_Transmit(&huart, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
-
+    if (HAL_UART_Transmit(&huart, (uint8_t *)&ch, 1, 20) != HAL_OK)
+        ++txErrors;
 }
 
-void app_on_rx_byte(char ch)
+void app_get_stats(AppStats *stats)
 {
-    if (embedded_cli_insert_char(&cli, ch)) {
-        char **argv;
-        int argc = embedded_cli_argc(&cli, &argv);
-
-        if (argc > 0) {
-            // handle_command(argc, argv);
-        }
-
-        embedded_cli_prompt(&cli);
-    }
+    taskENTER_CRITICAL();
+    stats->rx_bytes = rxBytes;
+    stats->rx_dropped = rxDropped;
+    stats->uart_errors = uartErrors;
+    stats->rx_restart_errors = rxRestartErrors;
+    stats->tx_errors = txErrors;
+    stats->network_polls = networkPolls;
+    stats->network_ready = networkReady;
+    taskEXIT_CRITICAL();
+    stats->queue_used = uxQueueMessagesWaiting(uartRxQueue);
+    stats->queue_capacity = UART_RX_QUEUE_SIZE;
 }
 
 void TIM2_IRQHandler()
@@ -603,49 +476,61 @@ void MX_ETH_Init(void)
 
 	if (HAL_ETH_Init(&heth))
 	{
-		HAL_UART_Transmit_IT(&huart,bdata,sizeof(bdata));
 		Error_Handler();
 	}
-	HAL_UART_Transmit_IT(&huart,data,sizeof(data));
 
 }
 
 
-void lwipProc( void * pvParameters )
+static void lwipProc(void *pvParameters)
 {
-	while (1)
-	{
-	
-		MX_LWIP_Process();
-
-		sys_check_timeouts();
-
-	}
-
-}
-
-
-static void uartProc(void* pvParameters)
-{
-
-    uint8_t ch;
-    for (;;)
-    {
-        if (HAL_UART_Receive_IT(&huart, &ch, 1) == HAL_OK)
-        {
-            app_on_rx_byte((char)ch);
-        }
-        // при таймауте цикл идёт дальше, задача не залипает навсегда
+    (void)pvParameters;
+    MX_ETH_Init();
+    MX_LWIP_Init();
+    tftp_example_init_server();
+    networkReady = 1;
+    for (;;) {
+        /* MX_LWIP_Process already calls sys_check_timeouts. */
+        MX_LWIP_Process();
+        ++networkPolls;
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
-
-static void uartSend(void* pvParameters)
+static void uartProc(void *pvParameters)
 {
-	while (1)
-	{
-		HAL_UART_Transmit_IT(&huart,bdata,sizeof(bdata));
-	}
+    (void)pvParameters;
+    uint8_t ch;
+    uint32_t seenFault = 0;
+    app_cli_init();
+    if (HAL_UART_Receive_IT(&huart, &rxByte, 1) != HAL_OK) Error_Handler();
+    for (;;) {
+        BaseType_t received = xQueueReceive(uartRxQueue, &ch, pdMS_TO_TICKS(100));
+        bool lost;
+        /* Serialize task-side rearming with the UART interrupt. */
+        taskENTER_CRITICAL();
+        if (huart.RxState == HAL_UART_STATE_READY &&
+            HAL_UART_Receive_IT(&huart, &rxByte, 1) != HAL_OK) {
+            ++rxRestartErrors;
+            ++rxFaultGeneration;
+        }
+        lost = seenFault != rxFaultGeneration;
+        if (lost) {
+            seenFault = rxFaultGeneration;
+            xQueueReset(uartRxQueue);
+        }
+        taskEXIT_CRITICAL();
+        if (lost) app_cli_input_lost();
+        else if (received == pdPASS) app_cli_rx((char)ch);
+    }
+}
+
+void vApplicationMallocFailedHook(void) { Error_Handler(); }
+void vApplicationStackOverflowHook(TaskHandle_t task, char *name)
+{
+    (void)task;
+    (void)name;
+    Error_Handler();
 }
 
 /**
