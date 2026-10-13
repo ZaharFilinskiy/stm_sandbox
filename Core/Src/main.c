@@ -6,6 +6,7 @@
 
 #include "main.h"
 #include "app_cli.h"
+#include "camera_stream.h"
 #include "settings.h"
 #include "flash_access.h"
 
@@ -95,7 +96,7 @@ int main(void)
     /* Same priority: preemptive time slicing keeps both tasks progressing.
      * Only lwipProc owns the NO_SYS lwIP stack and Ethernet driver.
      * USART RX is armed inside uartProc after the scheduler has started. */
-    if (xTaskCreate(lwipProc, "lwip", 1024, NULL, 1, NULL) != pdPASS ||
+    if (xTaskCreate(lwipProc, "lwip", 1536, NULL, 1, NULL) != pdPASS ||
         xTaskCreate(uartProc, "cli", 1024, NULL, 1, NULL) != pdPASS)
         Error_Handler();
     vTaskStartScheduler();
@@ -488,10 +489,12 @@ static void lwipProc(void *pvParameters)
     MX_ETH_Init();
     MX_LWIP_Init();
     tftp_example_init_server();
+    camera_stream_init();
     networkReady = 1;
     for (;;) {
         /* MX_LWIP_Process already calls sys_check_timeouts. */
         MX_LWIP_Process();
+        camera_stream_poll();
         ++networkPolls;
         vTaskDelay(pdMS_TO_TICKS(1));
     }

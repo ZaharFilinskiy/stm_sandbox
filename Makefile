@@ -96,10 +96,10 @@ Core/phy/lan8742.c
 # Core/ssd1306/ssd1306_fonts.c \
 # Core/ssd1306/ssd1306_tests.c	
 C_SOURCES += $(LIB_SOURCES)
-C_SOURCES += Core/Src/app_cli.c Core/Src/settings.c Core/Src/settings_flash.c Core/Src/flash_access.c
+C_SOURCES += Core/Src/camera_stream.c Core/Src/app_cli.c Core/Src/settings.c Core/Src/settings_flash.c Core/Src/flash_access.c
 
 # Keep in sync with HAL_*_MODULE_ENABLED in Core/Inc/stm32h7xx_hal_conf.h.
-ENABLED_MODULES := eth iwdg rtc tim uart gpio dma mdma rcc flash exti pwr i2c cortex hsem
+ENABLED_MODULES := dcmi eth iwdg rtc tim uart gpio dma mdma rcc flash exti pwr i2c cortex hsem
 
 # 3. Формируем список драйверов (фильтруем дубликаты через sort)
 HAL_DRIVER_DIR := Drivers/STM32H7xx_HAL_Driver/Src
