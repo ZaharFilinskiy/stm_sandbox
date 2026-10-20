@@ -1,38 +1,47 @@
-# Клиент для Windows и Linux
+# Клиент для Windows и Linux в общем репозитории
 
-Исходники клиента: `../camera_client` относительно корня stm_sandbox.
-Это отдельный соседний Git-репозиторий, поэтому clone прошивки сам по себе
-не скачивает клиента. Клонируйте/скопируйте оба репозитория в одну папку.
+Клиент включён в этот репозиторий в ветке **camera-client**, каталог
+`camera_client/`. Ветка создана от main, поэтому содержит и прошивку.
+Подмодуль и отдельное клонирование клиента не требуются.
 
-Полная инструкция: [README клиента](../../camera_client/README.md).
-Требуется Python 3.10+; графическое окно использует tkinter и Pillow.
+```bash
+git switch camera-client
+cd camera_client
+```
 
-Windows PowerShell/cmd:
+Полная инструкция: [README клиента](../camera_client/README.md).
+Нужен Python 3.10+. Launcher создаёт локальное .venv и при необходимости
+устанавливает Pillow. Окружение не переносится между Windows/Linux.
+
+Windows PowerShell/cmd, из корня репозитория:
 
 ```powershell
-cd ..\camera_client
+cd camera_client
 .\run.bat 192.168.1.123
 ```
 
-Linux:
+Linux, из корня репозитория:
 
 ```bash
-cd ../camera_client
+cd camera_client
 ./run.sh 192.168.1.123
 ```
 
-Launcher создаёт платформенное .venv и при необходимости устанавливает Pillow.
-Окружение не переносится между ОС. На Linux tkinter устанавливается
-системным пакетным менеджером (для Debian/Ubuntu python3-tk и python3-venv).
-
-PPM сохраняется стандартной библиотекой без графического окна, PNG/JPEG
-используют Pillow. Формат соответствует расширению файла:
+В Debian/Ubuntu нужны python3-venv и python3-tk для окружения и GUI.
+PPM сохраняется без сторонних пакетов и графического сеанса:
 
 ```text
 python client.py 192.168.1.123 --save frame.ppm
 ```
 
-GitHub Actions клиента содержит матрицу Windows/Linux, Python 3.10/3.13.
-Локальная проверка здесь выполнена на Linux; Windows job выполнится после
-публикации клиента на GitHub. Firmware/протокол CAM1 для переносимости
-клиента не менялись. Снимки, .venv и cache в Git не включаются.
+Тесты, из корня репозитория:
+
+```bash
+python -m unittest discover -s camera_client -v
+```
+
+Workflow `.github/workflows/camera-client.yml` запускает клиентские тесты
+на Windows/Linux, Python 3.10/3.13, из подкаталога camera_client.
+Локальная проверка выполнена на Linux; нативный Windows здесь не запускался.
+Исходная соседняя папка ~/projstm/camera_client оставлена как прежняя копия;
+дальнейшие изменения в ней не синхронизируются с этой веткой автоматически.

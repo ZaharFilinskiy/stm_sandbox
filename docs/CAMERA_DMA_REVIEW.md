@@ -94,7 +94,7 @@ FRAME interrupt больше не зависит от заполнения вс�
 После прошивки исправленного main используйте обычный клиент:
 
 ```bash
-cd ~/projstm/camera_client
+cd ~/projstm/stm_sandbox/camera_client
 .venv/bin/python client.py 192.168.1.123
 ```
 

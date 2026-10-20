@@ -1,0 +1,21 @@
+name: Camera client Windows and Linux tests
+on: [push, pull_request]
+jobs:
+  client:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.13']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: camera_client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest -v
+      - run: python client.py --help
+      - run: python run.py --help

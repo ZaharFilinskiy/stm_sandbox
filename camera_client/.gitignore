@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+# Received frames and local captures are not source files.
+*.ppm
+*.png
+*.jpg
+*.jpeg
+*.pcap
+*.pcapng

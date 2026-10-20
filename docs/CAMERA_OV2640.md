@@ -3,8 +3,8 @@
 ## Что реализовано
 
 Проект STM32H755ZITX (CM7) получает RGB565 320×240 через DCMI и DMA2_Stream0,
-затем отдаёт кадр по Ethernet/UDP, порт 5000. Клиент находится рядом с проектом:
-`../camera_client/client.py`. Можно сохранять один кадр в PPM или смотреть
+затем отдаёт кадр по Ethernet/UDP, порт 5000. Клиент находится внутри этого репозитория в ветке camera-client:
+`camera_client/client.py`. Можно сохранять один кадр в PPM или смотреть
 последовательность кадров в окне. Частота зависит от камеры, Ethernet и задержки
 запросов; фиксированная частота видео не гарантируется.
 
@@ -186,14 +186,14 @@ IP по умолчанию 192.168.1.123/24; используются сущес
 Сохранение кадра без сторонних Python-пакетов:
 
 ```bash
-cd ~/projstm/camera_client
+cd ~/projstm/stm_sandbox/camera_client
 python3 client.py 192.168.1.123 --save frame.ppm
 ```
 
 Просмотр:
 
 ```bash
-cd ~/projstm/camera_client
+cd ~/projstm/stm_sandbox/camera_client
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python client.py 192.168.1.123
@@ -272,7 +272,7 @@ DMA normal, 38432 слова ёмкости, JPEG выключен. Кадр с�
 
 Выполнены сборка GCC ARM и тесты Python: красный/зелёный/синий RGB565,
 перестановка байтов, потеря UDP-запроса, busy, устаревший ответ и два кадра.
-Тесты: `cd ../camera_client && python3 -m unittest -v`.
+Тесты: `cd camera_client && python3 -m unittest -v`.
 Новых предупреждений в коде камеры нет; в исходном Ethernet/TFTP коде
 есть существующие предупреждения. Физический захват на плате не проверен:
 подключённая камера и доступ к плате для прошивки не предоставлены.
