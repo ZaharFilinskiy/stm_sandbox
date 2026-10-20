@@ -1,4 +1,5 @@
 #include "app_cli.h"
+#include "camera_stream.h"
 #include "settings.h"
 #include "settings_storage.h"
 #include "task.h"
@@ -10,8 +11,13 @@ static char output[32768];
 static size_t used;
 static unsigned resets;
 static unsigned char flash[2][SETTINGS_RECORD_SIZE];
+static uint32_t now=1000;
+void camera_get_diagnostics(CameraDiagnostics *d) {
+    memset(d,0,sizeof(*d)); d->ready=1; d->pid=0x2642;
+    d->last_reason=3; d->last_remaining=38400;
+}
 uint32_t SystemCoreClock = 64000000U;
-uint32_t HAL_GetTick(void) { return 1000; }
+uint32_t HAL_GetTick(void) { return now; }
 void NVIC_SystemReset(void) { ++resets; }
 size_t xPortGetFreeHeapSize(void) { return 4000; }
 size_t xPortGetMinimumEverFreeHeapSize(void) { return 3500; }
@@ -73,6 +79,17 @@ int main(void)
     input("status\r");
     assert(strstr(output, "task=cli") && strstr(output, "task=lwip"));
     assert(strstr(output, "min-free=3500") && strstr(output, "stack-min-free=1600"));
+    input("camera\r");
+    assert(strstr(output,"PID=0x2642") && strstr(output,"last=timeout remaining=38400"));
+    input("camera watch on\r");
+    assert(strstr(output,"watch=on"));
+    used=0; output[0]=0; app_cli_poll();
+    assert(strstr(output,"CAM state=ready"));
+    input("cam"); now+=1100; used=0; output[0]=0; app_cli_poll();
+    assert(!used); /* Periodic UART must not interrupt a partially typed command. */
+    input("era watch off\r");
+    assert(strstr(output,"watch=off"));
+    used=0; output[0]=0; now+=1100; app_cli_poll(); assert(!used);
     input("reboot extra\r");
     assert(resets == 0);
     input("reb");
